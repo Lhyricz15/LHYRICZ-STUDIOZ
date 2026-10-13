@@ -8,7 +8,7 @@ import {
 type Note = { id: string; solfa: string; pitch: number; duration: string; kind?: 'note' | 'rest' };
 type MusicProject = {
   id: string; title: string; updatedAt: string; key: string;
-  convention: 'movable' | 'fixed'; minorConvention: 'la' | 'do'; tempo: number;
+  convention: 'movable' | 'fixed'; minorConvention: 'la' | 'do'; tempo: number; timeSignature?: string;
   solfaText: string; notes: Note[];
 };
 const STORE_KEY = 'lhyricz-studioz-projects-v1';
@@ -118,15 +118,22 @@ function staffPosition(midi: number) {
   const diatonicStep = (octave - 4) * 7 + STAFF_LETTER_INDEX[pitch.letter] - STAFF_LETTER_INDEX.E;
   return { y: 140 - diatonicStep * 10, letter: pitch.letter, accidental: pitch.accidental, octave };
 }
-function MusicStaff({notes,onEdit}:{notes:Note[];onEdit:(note:Note)=>void}) {
+function MusicStaff({notes,onEdit,timeSignature='4/4'}:{notes:Note[];onEdit:(note:Note)=>void;timeSignature?:string}) {
   const width = Math.max(1000, 120 + notes.length * 76);
-  const startX = 100;
+  const startX = 150;
   const endX = width - 45;
   const gap = notes.length > 1 ? (endX - startX) / (notes.length - 1) : 0;
+  const [beatsNumerator, beatsDenominator] = timeSignature.split('/').map(Number);
+  const barLength = (beatsNumerator || 4) * 4 / (beatsDenominator || 4);
+  const beatValues:Record<string,number> = {whole:4,half:2,quarter:1,eighth:0.5,sixteenth:0.25,'dotted-half':3,'dotted-quarter':1.5,'dotted-eighth':0.75};
+  let beatCount = 0;
+  const barAfter = notes.map(note => { beatCount += beatValues[note.duration] ?? 1; if (beatCount >= barLength - 0.001) { beatCount = beatCount % barLength; return true; } return false; });
   return <div className="engraved-staff-wrap">
     <svg className="engraved-staff" style={{width:`${width}px`}} viewBox={`0 0 ${width} 230`} role="group" aria-label="Editable treble-clef melody staff">
       {[60,80,100,120,140].map(y=><line key={y} x1="62" y1={y} x2={width-24} y2={y} className="engraved-staff-line"/>)}
       <text x="12" y="130" className="engraved-clef">𝄞</text>
+      <text x="82" y="91" className="engraved-time-signature">{beatsNumerator || 4}</text>
+      <text x="82" y="117" className="engraved-time-signature">{beatsDenominator || 4}</text>
       {notes.map((note,index)=>{
         const x = startX + gap * index;
         const rest = note.kind === 'rest' || note.pitch < 0;
@@ -152,6 +159,7 @@ function MusicStaff({notes,onEdit}:{notes:Note[];onEdit:(note:Note)=>void}) {
             {note.duration.startsWith('dotted-') && <circle cx={x+13} cy={pos.y-2} r="2.4" className="engraved-dot"/>}
           </>}
           <text x={x} y="190" textAnchor="middle" className="engraved-solfa">{rest?'Rest':note.solfa}</text>
+          {barAfter[index] && index < notes.length-1 && <line x1={x+gap/2} y1="60" x2={x+gap/2} y2="140" className="engraved-barline"/>}
         </g>;
       })}
       <text x="64" y="216" className="engraved-hint">TREBLE CLEF · Select a note to edit</text>
@@ -161,7 +169,7 @@ function MusicStaff({notes,onEdit}:{notes:Note[];onEdit:(note:Note)=>void}) {
 \nfunction makeProject(title = 'My first composition'): MusicProject {
   return {
     id: crypto.randomUUID(), title, updatedAt: new Date().toISOString(), key: 'C major',
-    convention: 'movable', minorConvention: 'la', tempo: 100,
+    convention: 'movable', minorConvention: 'la', tempo: 100, timeSignature: '4/4',
     solfaText: 'Do Re Mi | Fa Sol Sol | La Sol Fa Re | Do — —',
     notes: [
       { id: crypto.randomUUID(), solfa: 'Do', pitch: 60, duration: 'quarter' },
@@ -302,9 +310,9 @@ export default function App() {
           </section>}
           {page === 'editor' && activeProject && <section>
             <div className="editor-heading"><div><button className="back-link" onClick={() => setPage('home')}>← Workspace</button><h1>{activeProject.title}</h1><p className="page-lead">Your notes, your interpretation. Changes save automatically.</p></div><button className="secondary-button" onClick={exportBackup}><Save size={16}/> Backup</button></div>
-            <div className="editor-toolbar"><div className="editor-project-icon"><FileMusic size={20}/></div><div className="editor-project-label"><strong>{activeProject.title}</strong><small>Autosaved locally</small></div><div className="toolbar-fields"><label>Key<select value={activeProject.key} onChange={e=>{const key=e.target.value;const nextProject={...activeProject,key};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({key,notes,solfaText});setSolfaDraft(solfaText);}}>{['C major','G major','D major','A major','E major','F major','B♭ major','A minor','E minor','D minor'].map(k=><option key={k}>{k}</option>)}</select></label><label>Tempo<input type="number" min="30" max="240" value={activeProject.tempo} onChange={e=>updateActive({tempo:Math.max(30,Math.min(240,Number(e.target.value)||100))})}/><span>BPM</span></label></div></div>
+            <div className="editor-toolbar"><div className="editor-project-icon"><FileMusic size={20}/></div><div className="editor-project-label"><strong>{activeProject.title}</strong><small>Autosaved locally</small></div><div className="toolbar-fields"><label>Key<select value={activeProject.key} onChange={e=>{const key=e.target.value;const nextProject={...activeProject,key};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({key,notes,solfaText});setSolfaDraft(solfaText);}}>{['C major','G major','D major','A major','E major','F major','B♭ major','A minor','E minor','D minor'].map(k=><option key={k}>{k}</option>)}</select></label><label>Tempo<input type="number" min="30" max="240" value={activeProject.tempo} onChange={e=>updateActive({tempo:Math.max(30,Math.min(240,Number(e.target.value)||100))})}/><span>BPM</span></label><label>Time<select aria-label="Time signature" value={activeProject.timeSignature || '4/4'} onChange={e=>updateActive({timeSignature:e.target.value})}>{['4/4','3/4','2/4','6/8'].map(t=><option key={t}>{t}</option>)}</select></label></div></div>
             <div className="editor-layout"><div className="editor-main"><div className="panel-heading"><div><h2>Melody staff</h2><p>Tap a note to change its solfa. Use the note buttons to add more.</p></div><span className="live-tag"><span className="status-dot"/> LIVE</span></div>
-              <div className="staff-wrap"><MusicStaff notes={activeProject.notes} onEdit={(n)=>{const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind==='rest'?'Rest':n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}/></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
+              <div className="staff-wrap"><MusicStaff notes={activeProject.notes} timeSignature={activeProject.timeSignature || '4/4'} onEdit={(n)=>{const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind==='rest'?'Rest':n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}/></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
               <div className="duration-editor">
                 <div className="duration-editor-heading"><strong>Note lengths</strong><span>Quarter = 1 beat in 4/4</span></div>
                 <div className="duration-note-list">{activeProject.notes.map((n,i)=><label className="duration-note" key={n.id}><span className="duration-note-name">{i+1}. {n.solfa}</span><select aria-label={`Duration for note ${i+1}`} value={n.duration} onChange={e=>updateNote(n.id,{duration:e.target.value})}><option value="whole">Whole (4 beats)</option><option value="half">Half (2 beats)</option><option value="quarter">Quarter (1 beat)</option><option value="eighth">Eighth (½ beat)</option><option value="sixteenth">Sixteenth (¼ beat)</option><option value="dotted-half">Dotted half (3 beats)</option><option value="dotted-quarter">Dotted quarter (1½ beats)</option><option value="dotted-eighth">Dotted eighth (¾ beat)</option></select></label>)}</div>
