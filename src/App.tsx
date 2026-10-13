@@ -119,13 +119,16 @@ function staffPosition(midi: number) {
   return { y: 140 - diatonicStep * 10, letter: pitch.letter, accidental: pitch.accidental, octave };
 }
 function MusicStaff({notes,onEdit,timeSignature='4/4'}:{notes:Note[];onEdit:(note:Note)=>void;timeSignature?:string}) {
-  const width = Math.max(1000, 120 + notes.length * 76);
-  const startX = 150;
-  const endX = width - 45;
-  const gap = notes.length > 1 ? (endX - startX) / (notes.length - 1) : 0;
   const [beatsNumerator, beatsDenominator] = timeSignature.split('/').map(Number);
   const barLength = (beatsNumerator || 4) * 4 / (beatsDenominator || 4);
   const beatValues:Record<string,number> = {whole:4,half:2,quarter:1,eighth:0.5,sixteenth:0.25,'dotted-half':3,'dotted-quarter':1.5,'dotted-eighth':0.75};
+  const totalBeats = notes.reduce((sum,note)=>sum+(beatValues[note.duration] ?? 1),0);
+  const spacingUnit = 78;
+  const startX = 150;
+  const width = Math.max(1000, startX + Math.max(1,totalBeats)*spacingUnit + 100);
+  const noteStarts:number[] = [];
+  let elapsedBeats = 0;
+  notes.forEach(note=>{noteStarts.push(startX + elapsedBeats*spacingUnit);elapsedBeats += beatValues[note.duration] ?? 1;});
   let beatCount = 0;
   const barAfter = notes.map(note => { beatCount += beatValues[note.duration] ?? 1; if (beatCount >= barLength - 0.001) { beatCount = beatCount % barLength; return true; } return false; });
   return <div className="engraved-staff-wrap">
@@ -135,7 +138,7 @@ function MusicStaff({notes,onEdit,timeSignature='4/4'}:{notes:Note[];onEdit:(not
       <text x="82" y="91" className="engraved-time-signature">{beatsNumerator || 4}</text>
       <text x="82" y="117" className="engraved-time-signature">{beatsDenominator || 4}</text>
       {notes.map((note,index)=>{
-        const x = startX + gap * index;
+        const x = noteStarts[index];
         const rest = note.kind === 'rest' || note.pitch < 0;
         const pos = rest ? {y:100,letter:'',accidental:'',octave:4} : staffPosition(note.pitch);
         const ledgerYs:number[] = [];
@@ -159,7 +162,7 @@ function MusicStaff({notes,onEdit,timeSignature='4/4'}:{notes:Note[];onEdit:(not
             {note.duration.startsWith('dotted-') && <circle cx={x+13} cy={pos.y-2} r="2.4" className="engraved-dot"/>}
           </>}
           <text x={x} y="190" textAnchor="middle" className="engraved-solfa">{rest?'Rest':note.solfa}</text>
-          {barAfter[index] && index < notes.length-1 && <line x1={x+gap/2} y1="60" x2={x+gap/2} y2="140" className="engraved-barline"/>}
+          {barAfter[index] && index < notes.length-1 && <line x1={x+(beatValues[note.duration] ?? 1)*spacingUnit} y1="60" x2={x+(beatValues[note.duration] ?? 1)*spacingUnit} y2="140" className="engraved-barline"/>}
         </g>;
       })}
       <text x="64" y="216" className="engraved-hint">TREBLE CLEF · Select a note to edit</text>
