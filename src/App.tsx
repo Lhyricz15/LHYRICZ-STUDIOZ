@@ -313,7 +313,7 @@ export default function App() {
       const p = pitchParts(note.pitch);
       const type = ({whole:'whole',half:'half',quarter:'quarter',eighth:'eighth',sixteenth:'16th','dotted-half':'half','dotted-quarter':'quarter','dotted-eighth':'eighth'} as Record<string,string>)[note.duration] ?? 'quarter';
       return `      <note><pitch><step>${p.step}</step>${p.alter ? `<alter>${p.alter}</alter>` : ''}<octave>${p.octave}</octave></pitch><duration>${duration}</duration><voice>1</voice><type>${type}</type>${note.duration.startsWith('dotted-') ? '<dot/>' : ''}</note>`;
-    }).join('\n');
+    });
     const [beatsRaw, beatTypeRaw] = (activeProject.timeSignature || '4/4').split('/');
     const beats = Number(beatsRaw) || 4;
     const beatType = Number(beatTypeRaw) || 4;
@@ -326,6 +326,20 @@ export default function App() {
     };
     const normalizedKey = `${keyName} ${isMinorKey(activeProject.key) ? 'minor' : 'major'}`;
     const fifths = fifthsByKey[normalizedKey] ?? 0;
+    const measureUnits = beats * 16 / beatType;
+    const measures: string[][] = [[]];
+    let elapsed = 0;
+    noteXml.forEach((entry, index) => {
+      const units = durationUnits[activeProject.notes[index].duration] ?? 4;
+      if (elapsed > 0 && elapsed + units > measureUnits) { measures.push([]); elapsed = 0; }
+      measures[measures.length - 1].push(entry);
+      elapsed += units;
+      if (elapsed >= measureUnits && index < noteXml.length - 1) { measures.push([]); elapsed = 0; }
+    });
+    const measuresXml = measures.map((entries, index) => `    <measure number="${index + 1}">
+${index === 0 ? `      <attributes><divisions>4</divisions><key><fifths>${fifths}</fifths><mode>${isMinorKey(activeProject.key) ? 'minor' : 'major'}</mode></key><time><beats>${beats}</beats><beat-type>${beatType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${activeProject.tempo}</per-minute></metronome></direction-type><sound tempo="${activeProject.tempo}"/></direction>\n` : ''}${entries.join('\n')}
+    </measure>`).join('\n');
     const xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
@@ -333,12 +347,7 @@ export default function App() {
   <identification><creator type="composer">LHYRICZ STUDIOZ</creator><encoding><software>LHYRICZ STUDIOZ</software></encoding></identification>
   <part-list><score-part id="P1"><part-name>Melody</part-name></score-part></part-list>
   <part id="P1">
-    <measure number="1">
-      <attributes><divisions>4</divisions><key><fifths>${fifths}</fifths><mode>${isMinorKey(activeProject.key) ? 'minor' : 'major'}</mode></key><time><beats>${beats}</beats><beat-type>${beatType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
-      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${activeProject.tempo}</per-minute></metronome></direction-type><sound tempo="${activeProject.tempo}"/></direction>
-${noteXml}
-      <barline location="right"><bar-style>regular</bar-style></barline>
-    </measure>
+${measuresXml}
   </part>
 </score-partwise>`;
     const blob = new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml;charset=utf-8' });
