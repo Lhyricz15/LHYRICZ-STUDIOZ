@@ -81,7 +81,7 @@ export default function App() {
     if (projects.length === 1) { setNotice('Keep at least one composition in your workspace.'); return; }
     const remaining = projects.filter(p => p.id !== id);
     setProjects(remaining);
-    if (activeId === id) { setActiveId(remaining[0].id); setPage('home'); }
+    if (activeId === id) { setActiveId(remaining[0]?.id ?? ''); setPage('home'); }
     setNotice('Composition removed from this device.');
   };
   const addNote = (index: number) => {
@@ -151,7 +151,7 @@ export default function App() {
             <div className="project-grid">{projects.slice(0,3).map((p,i)=><article className="project-card" key={p.id}><div className={`project-art project-art-${i%3}`}><div className="mini-staff">{[0,1,2,3,4].map(n=><span key={n}/>) }<div className="mini-notes">♪ ♩ ♫</div></div><span className="project-type">COMPOSITION</span></div><div className="project-info"><div className="project-title-row"><h3>{p.title}</h3><button className="icon-button card-menu" aria-label={`Delete ${p.title}`} onClick={() => deleteProject(p.id)}><Trash2 size={16}/></button></div><p>{p.key} <span>·</span> {p.tempo} BPM</p><div className="project-card-bottom"><span className="tiny-status"><span className="status-dot"/> Saved locally</span><button className="round-arrow" onClick={() => openProject(p.id)} aria-label={`Open ${p.title}`}>↗</button></div></div></article>)}
               <button className="new-project-card" onClick={() => setShowNewProject(true)}><span className="new-plus"><Plus size={22}/></span><strong>Start a new idea</strong><small>A blank page for your next melody</small></button>
             </div>
-            <div className="feature-strip"><div className="feature-icon"><WandSparkles size={20}/></div><div><strong>Good music starts with an idea.</strong><p>Use the editor to enter solfa and keep a visual melody sketch in sync.</p></div><button className="text-button" onClick={() => openProject(activeProject.id)}>Try the editor →</button></div>
+            <div className="feature-strip"><div className="feature-icon"><WandSparkles size={20}/></div><div><strong>Good music starts with an idea.</strong><p>Use the editor to enter solfa and keep a visual melody sketch in sync.</p></div><button className="text-button" onClick={() => activeProject && openProject(activeProject.id)}>Try the editor →</button></div>
           </section>}
           {page === 'editor' && activeProject && <section>
             <div className="editor-heading"><div><button className="back-link" onClick={() => setPage('home')}>← Workspace</button><h1>{activeProject.title}</h1><p className="page-lead">Your notes, your interpretation. Changes save automatically.</p></div><button className="secondary-button" onClick={exportBackup}><Save size={16}/> Backup</button></div>
