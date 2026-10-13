@@ -29,3 +29,8 @@
 .note-flag{position:absolute;top:calc(5px + var(--note-y, 30px));margin-left:10px;width:10px;height:13px;border-right:2px solid var(--blue);border-radius:0 0 8px 0;transform:skewY(-25deg);pointer-events:none}
 .note-flag.double-flag{height:20px;border-right:2px solid var(--blue);filter:drop-shadow(0 6px 0 var(--blue))}
 .note-dot{position:absolute;top:calc(25px + var(--note-y, 30px) + 1px);margin-left:12px;width:3px;height:3px;border-radius:50%;background:var(--blue)}
+
+/* Rests are displayed as rest symbols, not as pitched note heads. */
+.staff-note.staff-rest{color:var(--text)}
+.staff-note.staff-rest .rest-symbol{position:absolute;top:calc(25px + var(--note-y, 30px) - 2px);left:0;font-size:24px;line-height:1;color:var(--blue);font-family:serif}
+.staff-note.staff-rest small{top:130px}
