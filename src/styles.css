@@ -60,3 +60,6 @@
 @media(max-width:760px){.toolbar-fields{flex-wrap:wrap}.toolbar-fields label{min-width:88px}}
 
 .playback-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.playback-actions .primary-button,.playback-actions .secondary-button{padding:9px 11px}.playback-actions button svg{flex:none}@media(max-width:640px){.playback-actions{width:100%;margin-top:10px}.panel-heading:has(.playback-actions){align-items:flex-start;flex-wrap:wrap}.playback-actions .primary-button,.playback-actions .secondary-button{font-size:11px}}
+
+/* Playback tone selector */
+.tone-picker{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px;font-weight:700}.tone-picker select{border:1px solid var(--border);border-radius:7px;padding:8px 9px;background:var(--surface);color:var(--text);font:inherit;min-width:82px}.tone-picker select:disabled{opacity:.65}@media(max-width:640px){.tone-picker{flex:1}.tone-picker select{flex:1;min-width:0}}
