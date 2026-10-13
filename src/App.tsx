@@ -169,7 +169,7 @@ function MusicStaff({notes,onEdit,timeSignature='4/4'}:{notes:Note[];onEdit:(not
     </svg>
   </div>;
 }
-\nfunction makeProject(title = 'My first composition'): MusicProject {
+function makeProject(title = 'My first composition'): MusicProject {
   return {
     id: crypto.randomUUID(), title, updatedAt: new Date().toISOString(), key: 'C major',
     convention: 'movable', minorConvention: 'la', tempo: 100, timeSignature: '4/4',
