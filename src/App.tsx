@@ -16,6 +16,79 @@ const THEME_KEY = 'lhyricz-studioz-theme';
 const solfaNames = ['Do', 'Di/Ra', 'Re', 'Ri/Me', 'Mi', 'Fa', 'Fi/Se', 'Sol', 'Si/Le', 'La', 'Li/Te', 'Ti'];
 const pitchNames = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 
+const pitchClass: Record<string, number> = { C:0, 'C♯':1, 'C#':1, 'D♭':1, D:2, 'D♯':3, 'D#':3, 'E♭':3, 'Eb':3, E:4, 'E♯':5, F:5, 'F♯':6, 'F#':6, 'G♭':6, G:7, 'G♯':8, 'G#':8, 'A♭':8, Ab:8, A:9, 'A♯':10, 'A#':10, 'B♭':10, Bb:10, B:11 };
+const pitchLabels = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+const syllableOffsets: Record<string, number> = { do:0, di:1, ra:1, re:2, ri:3, me:3, mi:4, fa:5, fi:6, se:6, sol:7, so:7, si:8, le:8, la:9, li:10, te:10, ti:11 };
+const sharpFlatNames: Record<string, string> = { 'C#':'Di', 'Db':'Ra', 'D#':'Ri', 'Eb':'Me', 'E#':'Fi', 'Fb':'Mi', 'F#':'Fi', 'Gb':'Se', 'G#':'Si', 'Ab':'Le', 'A#':'Li', 'Bb':'Te', 'B#':'Do', 'Cb':'Ti' };
+function tonicForKey(key: string): number {
+  const match = key.match(/^(C♯|D♭|D♯|E♭|F♯|G♭|G♯|A♭|A♯|B♭|[A-G])\s*(major|minor)$/i);
+  return match ? pitchClass[match[1]] ?? 0 : 0;
+}
+function isMinorKey(key: string): boolean { return /minor/i.test(key); }
+function tokenToPitch(token: string, project: MusicProject): number | null {
+  const clean = token.trim().replace(/[.,;:!?()[\]{}]/g, '');
+  if (!clean || /^[-—–.]+$/.test(clean) || /^(rest|r)$/i.test(clean)) return null;
+  const match = clean.match(/^(Do|Di|Ra|Re|Ri|Me|Mi|Fa|Fi|Se|Sol|So|Si|Le|La|Li|Te|Ti|C#|Db|D#|Eb|E#|Fb|F#|Gb|G#|Ab|A#|Bb|B#|Cb)([0-8])?$/i);
+  if (!match) return null;
+  const name = match[1];
+  const octave = match[2] ? Number(match[2]) : null;
+  const lower = name.toLowerCase();
+  let offset: number;
+  let tonic = tonicForKey(project.key);
+  if (project.convention === 'fixed') {
+    const fixed = syllableOffsets[lower];
+    if (fixed === undefined) {
+      const flatSharp = pitchClass[name.replace('#','♯').replace('b','♭')] ?? pitchClass[name];
+      if (flatSharp === undefined) return null;
+      offset = flatSharp;
+    } else offset = fixed;
+  } else {
+    const minor = isMinorKey(project.key);
+    const degreeMap: Record<string, number> = minor
+      ? (project.minorConvention === 'la'
+        ? { la:0, li:1, te:2, ti:2, do:3, di:4, ra:4, re:5, ri:6, me:6, mi:7, fa:8, fi:9, se:9, sol:10, so:10, si:11, le:11 }
+        : { do:0, di:1, ra:1, re:2, ri:3, me:3, mi:4, fa:5, fi:6, se:6, sol:7, so:7, si:8, le:8, la:9, li:10, te:10, ti:11 })
+      : syllableOffsets;
+    if (degreeMap[lower] !== undefined) offset = degreeMap[lower];
+    else {
+      const spelled = pitchClass[name.replace('#','♯').replace('b','♭')] ?? pitchClass[name];
+      if (spelled === undefined) return null;
+      offset = spelled;
+    }
+    if (minor && project.minorConvention === 'la') tonic = (tonic + 3) % 12;
+  }
+  const baseOctave = octave ?? 4;
+  const midi = (baseOctave + 1) * 12 + tonic + offset;
+  return Math.max(0, Math.min(127, midi));
+}
+function pitchToSolfa(midi: number, project: MusicProject): string {
+  const pc = ((midi % 12) + 12) % 12;
+  if (project.convention === 'fixed') return ['Do','Di','Re','Ri','Mi','Fa','Fi','Sol','Si','La','Li','Ti'][pc];
+  const tonic = tonicForKey(project.key);
+  let degree = (pc - tonic + 12) % 12;
+  if (isMinorKey(project.key)) {
+    if (project.minorConvention === 'la') {
+      const laMap = ['Do','Di','Re','Ri','Mi','Fa','Fi','Sol','Si','La','Li','Ti'];
+      return laMap[(degree + 9) % 12];
+    }
+    return ['Do','Di','Re','Me','Mi','Fa','Se','Sol','Le','La','Te','Ti'][degree];
+  }
+  return ['Do','Di','Re','Ri','Mi','Fa','Fi','Sol','Si','La','Li','Ti'][degree];
+}
+function parseSolfaNotes(text: string, project: MusicProject): Note[] {
+  const tokens = text.replace(/[|\n\r]+/g, ' ').split(/\s+/).filter(Boolean);
+  const notes: Note[] = [];
+  for (const token of tokens) {
+    const pitch = tokenToPitch(token, project);
+    if (pitch === null) continue;
+    notes.push({ id: crypto.randomUUID(), solfa: token.replace(/[^\p{L}♯#♭b0-8]/gu, ''), pitch, duration: /[—–-]/.test(token) ? 'whole' : 'quarter' });
+  }
+  return notes;
+}
+function rebuildSolfa(notes: Note[], project: MusicProject): string {
+  return notes.map(n => pitchToSolfa(n.pitch, project)).join(' ');
+}
+
 function makeProject(title = 'My first composition'): MusicProject {
   return {
     id: crypto.randomUUID(), title, updatedAt: new Date().toISOString(), key: 'C major',
@@ -87,12 +160,17 @@ export default function App() {
   const addNote = (index: number) => {
     if (!activeProject) return;
     const pitch = 60 + index;
-    const note = { id: crypto.randomUUID(), solfa: solfaNames[index % 12], pitch, duration: 'quarter' };
-    updateActive({ notes: [...activeProject.notes, note] });
+    const note = { id: crypto.randomUUID(), solfa: pitchToSolfa(pitch, activeProject), pitch, duration: 'quarter' };
+    const notes = [...activeProject.notes, note];
+    updateActive({ notes, solfaText: rebuildSolfa(notes, activeProject) });
+    setSolfaDraft(rebuildSolfa(notes, activeProject));
   };
   const updateNote = (id: string, patch: Partial<Note>) => {
     if (!activeProject) return;
-    updateActive({ notes: activeProject.notes.map(n => n.id === id ? { ...n, ...patch } : n) });
+    const notes = activeProject.notes.map(n => n.id === id ? { ...n, ...patch } : n);
+    const solfaText = rebuildSolfa(notes, activeProject);
+    updateActive({ notes, solfaText });
+    setSolfaDraft(solfaText);
   };
   const exportBackup = () => {
     const blob = new Blob([JSON.stringify({ app: 'LHYRICZ STUDIOZ', version: 1, projects }, null, 2)], { type: 'application/json' });
@@ -160,9 +238,9 @@ export default function App() {
               <div className="staff-wrap"><div className="staff-clef">𝄞</div><div className="staff-canvas"><div className="staff-lines">{[0,1,2,3,4].map(n=><span key={n}/>)}</div><div className="staff-note-row">{activeProject.notes.map((n,i)=><button key={n.id} className="staff-note" style={{top:`${Math.max(3,Math.min(91,staffY[i] - 34))}%`}} title={`${n.solfa}, MIDI pitch ${n.pitch}`} onClick={() => {const next=window.prompt('Enter solfa for this note (Do, Re, Mi, Fa, Sol, La, Ti):',n.solfa);if(next?.trim())updateNote(n.id,{solfa:next.trim(),pitch:n.pitch});}}><span className="note-head"/><span className="note-stem"/><small>{n.solfa}</small></button>)}</div></div></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Note pitch values are retained as you edit solfa labels.</span></div>
               <div className="add-notes"><span>Add a note</span>{solfaNames.filter((_,i)=>[0,2,4,5,7,9,11].includes(i)).map((s,i)=><button key={s} onClick={()=>addNote([0,2,4,5,7,9,11][i])}>{s}</button>)}</div>
               <div className="panel-heading solfa-heading"><div><h2>Solfa entry</h2><p>Type syllables, separate phrases with |, and use — for a held note.</p></div><span className="sync-label"><Check size={14}/> Text entry</span></div>
-              <textarea className="solfa-editor" value={solfaDraft} onChange={e=>setSolfaDraft(e.target.value)} onBlur={()=>updateActive({solfaText:solfaDraft})} spellCheck={false} aria-label="Solfa text entry"/>
+              <textarea className="solfa-editor" value={solfaDraft} onChange={e=>{const text=e.target.value;setSolfaDraft(text);const parsed=parseSolfaNotes(text,activeProject);updateActive({solfaText:text,notes:parsed.length?parsed:activeProject.notes});}} onBlur={()=>updateActive({solfaText:solfaDraft})} spellCheck={false} aria-label="Solfa text entry"/>
               <div className="editor-bottom"><span><span className="status-dot"/> Saved on this device</span><button className="primary-button" onClick={()=>{updateActive({solfaText:solfaDraft});setNotice('Solfa changes saved.');}}><Save size={16}/> Save changes</button></div>
-            </div><aside className="editor-side"><div className="side-panel"><div className="side-panel-title"><Settings2 size={17}/><h3>Project settings</h3></div><label className="setting-label">Solfa convention<select value={activeProject.convention} onChange={e=>updateActive({convention:e.target.value as 'movable'|'fixed'})}><option value="movable">Movable Do</option><option value="fixed">Fixed Do</option></select><small>Choose how syllables are interpreted in this project.</small></label><label className="setting-label">Minor-key convention<select value={activeProject.minorConvention} onChange={e=>updateActive({minorConvention:e.target.value as 'la'|'do'})}><option value="la">La-based minor</option><option value="do">Do-based minor</option></select><small>Minor-key solfa is a project-level choice.</small></label><label className="setting-label">Time signature<select defaultValue="4/4"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option><option>12/8</option></select></label></div><div className="side-panel export-panel"><div className="side-panel-title"><FileMusic size={17}/><h3>Export & share</h3></div><p>Back up your project now. Music notation exports are being built in later stages.</p><button className="full-width-button" onClick={exportBackup}><Save size={16}/> Download project backup</button><div className="disabled-export"><FileAudio2 size={17}/><span>PDF / MusicXML / MIDI</span><span className="soon-tag">COMING</span></div></div><div className="privacy-note"><Cloud size={17}/><p><strong>Your music stays yours.</strong><br/>This early version stores work in your browser. Cloud sync is not active yet.</p></div></aside></div>
+            </div><aside className="editor-side"><div className="side-panel"><div className="side-panel-title"><Settings2 size={17}/><h3>Project settings</h3></div><label className="setting-label">Solfa convention<select value={activeProject.convention} onChange={e=>{const convention=e.target.value as 'movable'|'fixed';const nextProject={...activeProject,convention};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({convention,notes,solfaText});setSolfaDraft(solfaText);}}><option value="movable">Movable Do</option><option value="fixed">Fixed Do</option></select><small>Choose how syllables are interpreted in this project.</small></label><label className="setting-label">Minor-key convention<select value={activeProject.minorConvention} onChange={e=>{const minorConvention=e.target.value as 'la'|'do';const nextProject={...activeProject,minorConvention};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({minorConvention,notes,solfaText});setSolfaDraft(solfaText);}}><option value="la">La-based minor</option><option value="do">Do-based minor</option></select><small>Minor-key solfa is a project-level choice.</small></label><label className="setting-label">Time signature<select defaultValue="4/4"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option><option>12/8</option></select></label></div><div className="side-panel export-panel"><div className="side-panel-title"><FileMusic size={17}/><h3>Export & share</h3></div><p>Back up your project now. Music notation exports are being built in later stages.</p><button className="full-width-button" onClick={exportBackup}><Save size={16}/> Download project backup</button><div className="disabled-export"><FileAudio2 size={17}/><span>PDF / MusicXML / MIDI</span><span className="soon-tag">COMING</span></div></div><div className="privacy-note"><Cloud size={17}/><p><strong>Your music stays yours.</strong><br/>This early version stores work in your browser. Cloud sync is not active yet.</p></div></aside></div>
           </section>}
           {page === 'library' && <section><div className="welcome-row"><div><div className="eyebrow"><Library size={14}/> YOUR LIBRARY</div><h1>My compositions</h1><p className="page-lead">All the music projects saved in this browser.</p></div><button className="primary-button" onClick={()=>setShowNewProject(true)}><Plus size={18}/> New composition</button></div><div className="library-list">{projects.map(p=><div className="library-row" key={p.id}><div className="library-file-icon"><FileMusic size={21}/></div><div className="library-meta"><strong>{p.title}</strong><small>{p.key} · {p.tempo} BPM · Updated {new Date(p.updatedAt).toLocaleDateString()}</small></div><button className="secondary-button" onClick={()=>openProject(p.id)}>Open editor ↗</button><button className="icon-button" aria-label={`Delete ${p.title}`} onClick={()=>deleteProject(p.id)}><Trash2 size={17}/></button></div>)}</div></section>}
           {page === 'audio' && <section><div className="eyebrow"><AudioLines size={14}/> MELODY TOOLS</div><h1>Audio tools</h1><p className="page-lead">Bring in a recording and begin turning a melody into editable music.</p><div className="audio-beta"><div className="audio-orb"><Headphones size={30}/></div><span className="hero-pill">AUDIO WORKBENCH · EARLY ACCESS</span><h2>Hear it. Find the melody. Shape the notes.</h2><p>Audio transcription is a separate, experimental stage of this project. Full-song processing and accuracy must be tested before they can be promised.</p><label className="upload-zone"><Upload size={23}/><strong>Choose an audio file</strong><span>WAV, MP3, M4A · local file selection only</span><input type="file" accept="audio/*" onChange={e=>{const f=e.target.files?.[0];if(f)setNotice(`Selected “${f.name}”. Melody analysis is not active in this preview yet.`);}}/></label><div className="audio-capabilities"><div><Check size={16}/> Melody extraction planned first</div><div><Check size={16}/> Key estimation planned</div><div><Check size={16}/> Correctable notes, not a black box</div></div></div></section>}
