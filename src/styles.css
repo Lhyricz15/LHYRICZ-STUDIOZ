@@ -20,3 +20,12 @@
 .staff-note{left:calc((100% - 22px) * var(--note-index, 0) / max(1, var(--note-count, 8) - 1))}
 .staff-note:nth-child(n){left:calc((100% - 22px) * var(--note-index, 0) / max(1, var(--note-count, 8) - 1))}
 @media(max-width:620px){.duration-note-list{grid-template-columns:1fr}.duration-editor-heading{align-items:flex-start;flex-direction:column}.duration-note{padding:6px}.duration-note-name{min-width:62px}}
+
+/* Duration-aware music notation glyphs. */
+.note-head.duration-whole,.note-head.duration-half{background:var(--surface);border:2px solid var(--blue);width:12px;height:9px}
+.note-head.duration-whole{transform:rotate(-25deg);border-width:2px}
+.note-stem.duration-whole{display:none}
+.note-stem.duration-eighth,.note-stem.duration-sixteenth,.note-stem.duration-dotted-eighth{height:25px}
+.note-flag{position:absolute;top:calc(5px + var(--note-y, 30px));margin-left:10px;width:10px;height:13px;border-right:2px solid var(--blue);border-radius:0 0 8px 0;transform:skewY(-25deg);pointer-events:none}
+.note-flag.double-flag{height:20px;border-right:2px solid var(--blue);filter:drop-shadow(0 6px 0 var(--blue))}
+.note-dot{position:absolute;top:calc(25px + var(--note-y, 30px) + 1px);margin-left:12px;width:3px;height:3px;border-radius:50%;background:var(--blue)}
