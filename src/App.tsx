@@ -314,7 +314,18 @@ export default function App() {
       const type = ({whole:'whole',half:'half',quarter:'quarter',eighth:'eighth',sixteenth:'16th','dotted-half':'half','dotted-quarter':'quarter','dotted-eighth':'eighth'} as Record<string,string>)[note.duration] ?? 'quarter';
       return `      <note><pitch><step>${p.step}</step>${p.alter ? `<alter>${p.alter}</alter>` : ''}<octave>${p.octave}</octave></pitch><duration>${duration}</duration><voice>1</voice><type>${type}</type>${note.duration.startsWith('dotted-') ? '<dot/>' : ''}</note>`;
     }).join('\n');
-    const [beats, beatType] = (activeProject.timeSignature || '4/4').split('/');
+    const [beatsRaw, beatTypeRaw] = (activeProject.timeSignature || '4/4').split('/');
+    const beats = Number(beatsRaw) || 4;
+    const beatType = Number(beatTypeRaw) || 4;
+    const keyName = activeProject.key.replace(/\\s*(major|minor)$/i, '').trim();
+    const fifthsByKey: Record<string, number> = {
+      'C major':0, 'G major':1, 'D major':2, 'A major':3, 'E major':4, 'B major':5, 'F♯ major':6, 'C♯ major':7,
+      'F major':-1, 'B♭ major':-2, 'E♭ major':-3, 'A♭ major':-4, 'D♭ major':-5, 'G♭ major':-6, 'C♭ major':-7,
+      'A minor':0, 'E minor':1, 'B minor':2, 'F♯ minor':3, 'C♯ minor':4, 'G♯ minor':5, 'D♯ minor':6, 'A♯ minor':7,
+      'D minor':-1, 'G minor':-2, 'C minor':-3, 'F minor':-4, 'B♭ minor':-5, 'E♭ minor':-6, 'A♭ minor':-7
+    };
+    const normalizedKey = `${keyName} ${isMinorKey(activeProject.key) ? 'minor' : 'major'}`;
+    const fifths = fifthsByKey[normalizedKey] ?? 0;
     const xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
@@ -323,11 +334,11 @@ export default function App() {
   <part-list><score-part id="P1"><part-name>Melody</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
-      <attributes><divisions>4</divisions><key><fifths>0</fifths><mode>${/minor/i.test(activeProject.key) ? 'minor' : 'major'}</mode></key><time><beats>${beats || '4'}</beats><beat-type>${beatType || '4'}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <attributes><divisions>4</divisions><key><fifths>${fifths}</fifths><mode>${isMinorKey(activeProject.key) ? 'minor' : 'major'}</mode></key><time><beats>${beats}</beats><beat-type>${beatType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${activeProject.tempo}</per-minute></metronome></direction-type><sound tempo="${activeProject.tempo}"/></direction>
 ${noteXml}
       <barline location="right"><bar-style>regular</bar-style></barline>
     </measure>
-    <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${activeProject.tempo}</per-minute></metronome></direction-type><sound tempo="${activeProject.tempo}"/></direction>
   </part>
 </score-partwise>`;
     const blob = new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml;charset=utf-8' });
