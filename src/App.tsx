@@ -5,7 +5,7 @@ import {
   Settings2, Sparkles, Sun, Trash2, Upload, WandSparkles, X
 } from 'lucide-react';
 
-type Note = { id: string; solfa: string; pitch: number; duration: string };
+type Note = { id: string; solfa: string; pitch: number; duration: string; kind?: 'note' | 'rest' };
 type MusicProject = {
   id: string; title: string; updatedAt: string; key: string;
   convention: 'movable' | 'fixed'; minorConvention: 'la' | 'do'; tempo: number;
@@ -78,14 +78,22 @@ function parseSolfaNotes(text: string, project: MusicProject): Note[] {
   const tokens = text.replace(/[|\n\r]+/g, ' ').split(/\s+/).filter(Boolean);
   const notes: Note[] = [];
   for (const token of tokens) {
-    const pitch = tokenToPitch(token, project);
+    if (/^(rest|r|—|–|-)$/i.test(token)) {
+      notes.push({ id: crypto.randomUUID(), solfa: 'Rest', pitch: -1, duration: 'quarter', kind: 'rest' });
+      continue;
+    }
+    const parts = token.split(':');
+    const pitchToken = parts[0];
+    const durationToken = parts[1]?.toLowerCase();
+    const duration = ['whole','half','quarter','eighth','sixteenth','dotted-half','dotted-quarter','dotted-eighth'].includes(durationToken ?? '') ? durationToken! : 'quarter';
+    const pitch = tokenToPitch(pitchToken, project);
     if (pitch === null) continue;
-    notes.push({ id: crypto.randomUUID(), solfa: token.replace(/[^\p{L}♯#♭b0-8]/gu, ''), pitch, duration: /[—–-]/.test(token) ? 'whole' : 'quarter' });
+    notes.push({ id: crypto.randomUUID(), solfa: pitchToSolfa(pitch, project), pitch, duration, kind: 'note' });
   }
   return notes;
 }
 function rebuildSolfa(notes: Note[], project: MusicProject): string {
-  return notes.map(n => pitchToSolfa(n.pitch, project)).join(' ');
+  return notes.map(n => n.kind === 'rest' || n.pitch < 0 ? 'Rest' : pitchToSolfa(n.pitch, project)).join(' ');
 }
 
 function makeProject(title = 'My first composition'): MusicProject {
@@ -188,7 +196,7 @@ export default function App() {
       setNotice('Backup imported successfully.');
     } catch { setNotice('That backup could not be read. Choose a LHYRICZ STUDIOZ JSON backup.'); }
   };
-  const staffY = useMemo(() => activeProject?.notes.map(n => 132 - (n.pitch - 60) * 3.5) ?? [], [activeProject?.notes]);
+  const staffY = useMemo(() => activeProject?.notes.map(n => n.kind === 'rest' || n.pitch < 0 ? 90 : 132 - (n.pitch - 60) * 3.5) ?? [], [activeProject?.notes]);
 
   return (
     <div className="app-shell">
@@ -234,12 +242,12 @@ export default function App() {
             <div className="editor-heading"><div><button className="back-link" onClick={() => setPage('home')}>← Workspace</button><h1>{activeProject.title}</h1><p className="page-lead">Your notes, your interpretation. Changes save automatically.</p></div><button className="secondary-button" onClick={exportBackup}><Save size={16}/> Backup</button></div>
             <div className="editor-toolbar"><div className="editor-project-icon"><FileMusic size={20}/></div><div className="editor-project-label"><strong>{activeProject.title}</strong><small>Autosaved locally</small></div><div className="toolbar-fields"><label>Key<select value={activeProject.key} onChange={e=>{const key=e.target.value;const nextProject={...activeProject,key};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({key,notes,solfaText});setSolfaDraft(solfaText);}}>{['C major','G major','D major','A major','E major','F major','B♭ major','A minor','E minor','D minor'].map(k=><option key={k}>{k}</option>)}</select></label><label>Tempo<input type="number" min="30" max="240" value={activeProject.tempo} onChange={e=>updateActive({tempo:Math.max(30,Math.min(240,Number(e.target.value)||100))})}/><span>BPM</span></label></div></div>
             <div className="editor-layout"><div className="editor-main"><div className="panel-heading"><div><h2>Melody staff</h2><p>Tap a note to change its solfa. Use the note buttons to add more.</p></div><span className="live-tag"><span className="status-dot"/> LIVE</span></div>
-              <div className="staff-wrap"><div className="staff-clef">𝄞</div><div className="staff-canvas"><div className="staff-lines">{[0,1,2,3,4].map(n=><span key={n}/>)}</div><div className="staff-note-row">{activeProject.notes.map((n,i)=><button key={n.id} className="staff-note" style={{top:`${Math.max(3,Math.min(91,staffY[i] - 34))}%`,left:activeProject.notes.length>1?`${(i/(activeProject.notes.length-1))*96}%`:'4%'}} title={`${n.solfa}, MIDI pitch ${n.pitch}`} onClick={() => {const next=window.prompt('Enter a solfa syllable or chromatic spelling (Do, Re, Fi, Bb, C#):',n.solfa);if(next?.trim()){const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb or C#.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject)});}}}}><span className={`note-head duration-${n.duration}`}/>{!['whole'].includes(n.duration)&&<span className={`note-stem duration-${n.duration}`}/>}{n.duration.startsWith('dotted-')&&<span className="note-dot"/>}{['eighth','sixteenth','dotted-eighth'].includes(n.duration)&&<span className={`note-flag ${n.duration==='sixteenth'?'double-flag':''}`}/>}<small>{n.solfa}</small></button>)}</div></div></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
+              <div className="staff-wrap"><div className="staff-clef">𝄞</div><div className="staff-canvas"><div className="staff-lines">{[0,1,2,3,4].map(n=><span key={n}/>)}</div><div className="staff-note-row">{activeProject.notes.map((n,i)=><button key={n.id} className={`staff-note ${n.kind === 'rest' || n.pitch < 0 ? 'staff-rest' : ''}`} style={{top:`${Math.max(3,Math.min(91,staffY[i] - 34))}%`,left:activeProject.notes.length>1?`${(i/(activeProject.notes.length-1))*96}%`:'4%'}} title={n.kind === 'rest' || n.pitch < 0 ? 'Rest' : `${n.solfa}, MIDI pitch ${n.pitch}`} onClick={() => {const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind === 'rest' ? 'Rest' : n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}><span className={`note-head duration-${n.duration}`}/>{!['whole'].includes(n.duration)&&<span className={`note-stem duration-${n.duration}`}/>}{n.duration.startsWith('dotted-')&&<span className="note-dot"/>}{['eighth','sixteenth','dotted-eighth'].includes(n.duration)&&<span className={`note-flag ${n.duration==='sixteenth'?'double-flag':''}`}/>}<small>{n.solfa}</small></button>)}</div></div></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
               <div className="duration-editor">
                 <div className="duration-editor-heading"><strong>Note lengths</strong><span>Quarter = 1 beat in 4/4</span></div>
                 <div className="duration-note-list">{activeProject.notes.map((n,i)=><label className="duration-note" key={n.id}><span className="duration-note-name">{i+1}. {n.solfa}</span><select aria-label={`Duration for note ${i+1}`} value={n.duration} onChange={e=>updateNote(n.id,{duration:e.target.value})}><option value="whole">Whole (4 beats)</option><option value="half">Half (2 beats)</option><option value="quarter">Quarter (1 beat)</option><option value="eighth">Eighth (½ beat)</option><option value="sixteenth">Sixteenth (¼ beat)</option><option value="dotted-half">Dotted half (3 beats)</option><option value="dotted-quarter">Dotted quarter (1½ beats)</option><option value="dotted-eighth">Dotted eighth (¾ beat)</option></select></label>)}</div>
               </div>
-              <div className="add-notes"><span>Add a note</span>{solfaNames.filter((_,i)=>[0,2,4,5,7,9,11].includes(i)).map((s,i)=><button key={s} onClick={()=>addNote([0,2,4,5,7,9,11][i])}>{s}</button>)}</div>
+              <div className="add-notes"><span>Add a note or rest</span><button onClick={()=>{const notes=[...activeProject.notes,{id:crypto.randomUUID(),solfa:'Rest',pitch:-1,duration:'quarter',kind:'rest' as const}];const solfaText=rebuildSolfa(notes,activeProject);updateActive({notes,solfaText});setSolfaDraft(solfaText);}}>Rest</button>{solfaNames.filter((_,i)=>[0,2,4,5,7,9,11].includes(i)).map((s,i)=><button key={s} onClick={()=>addNote([0,2,4,5,7,9,11][i])}>{s}</button>)}</div>
               <div className="panel-heading solfa-heading"><div><h2>Solfa entry</h2><p>Type syllables, separate phrases with |, and use — for a held note.</p></div><span className="sync-label"><Check size={14}/> Text entry</span></div>
               <textarea className="solfa-editor" value={solfaDraft} onChange={e=>{const text=e.target.value;setSolfaDraft(text);const parsed=parseSolfaNotes(text,activeProject);updateActive({solfaText:text,notes:parsed.length?parsed:activeProject.notes});}} onBlur={()=>updateActive({solfaText:solfaDraft})} spellCheck={false} aria-label="Solfa text entry"/>
               <div className="editor-bottom"><span><span className="status-dot"/> Saved on this device</span><button className="primary-button" onClick={()=>{updateActive({solfaText:solfaDraft});setNotice('Solfa changes saved.');}}><Save size={16}/> Save changes</button></div>
