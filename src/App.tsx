@@ -104,7 +104,61 @@ function rebuildSolfa(notes: Note[], project: MusicProject): string {
   }).join(' ');
 }
 
-function makeProject(title = 'My first composition'): MusicProject {
+
+const STAFF_PITCHES: Array<{letter:string; accidental:string}> = [
+  {letter:'C',accidental:''},{letter:'C',accidental:'♯'},{letter:'D',accidental:''},
+  {letter:'E',accidental:'♭'},{letter:'E',accidental:''},{letter:'F',accidental:''},
+  {letter:'F',accidental:'♯'},{letter:'G',accidental:''},{letter:'A',accidental:'♭'},
+  {letter:'A',accidental:''},{letter:'B',accidental:'♭'},{letter:'B',accidental:''}
+];
+const STAFF_LETTER_INDEX: Record<string,number> = { C:0,D:1,E:2,F:3,G:4,A:5,B:6 };
+function staffPosition(midi: number) {
+  const pitch = STAFF_PITCHES[((midi % 12) + 12) % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  const diatonicStep = (octave - 4) * 7 + STAFF_LETTER_INDEX[pitch.letter] - STAFF_LETTER_INDEX.E;
+  return { y: 140 - diatonicStep * 10, letter: pitch.letter, accidental: pitch.accidental, octave };
+}
+function MusicStaff({notes,onEdit}:{notes:Note[];onEdit:(note:Note)=>void}) {
+  const width = Math.max(1000, 120 + notes.length * 76);
+  const startX = 100;
+  const endX = width - 45;
+  const gap = notes.length > 1 ? (endX - startX) / (notes.length - 1) : 0;
+  return <div className="engraved-staff-wrap">
+    <svg className="engraved-staff" viewBox={`0 0 ${width} 230`} role="group" aria-label="Editable treble-clef melody staff">
+      {[60,80,100,120,140].map(y=><line key={y} x1="62" y1={y} x2={width-24} y2={y} className="engraved-staff-line"/>)}
+      <text x="12" y="130" className="engraved-clef">𝄞</text>
+      {notes.map((note,index)=>{
+        const x = startX + gap * index;
+        const rest = note.kind === 'rest' || note.pitch < 0;
+        const pos = rest ? {y:100,letter:'',accidental:'',octave:4} : staffPosition(note.pitch);
+        const ledgerYs:number[] = [];
+        if (!rest && pos.y < 60) for(let y=40;y>=pos.y;y-=20) ledgerYs.push(y);
+        if (!rest && pos.y > 140) for(let y=160;y<=pos.y;y+=20) ledgerYs.push(y);
+        const hollow = ['whole','half','dotted-half'].includes(note.duration);
+        const stemUp = pos.y >= 100;
+        const stemX = x + (stemUp ? 8 : -8);
+        const stemTop = stemUp ? pos.y - 42 : pos.y;
+        const stemBottom = stemUp ? pos.y : pos.y + 42;
+        const flagged = ['eighth','sixteenth','dotted-eighth'].includes(note.duration);
+        const flagPath = `M ${stemX} ${stemTop} q 30 10 20 27 q -7 -10 -20 -11`;
+        return <g key={note.id} className="engraved-note" role="button" tabIndex={0} aria-label={rest ? 'Edit rest' : `Edit ${note.solfa}, pitch ${note.pitch}`} onClick={()=>onEdit(note)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onEdit(note);}}}>
+          {ledgerYs.map(y=><line key={y} x1={x-15} y1={y} x2={x+15} y2={y} className="engraved-ledger"/>)}
+          {rest ? <text x={x} y={pos.y+8} textAnchor="middle" className="engraved-rest">𝄽</text> : <>
+            {pos.accidental && <text x={x-23} y={pos.y+6} textAnchor="middle" className="engraved-accidental">{pos.accidental}</text>}
+            {hollow ? <ellipse cx={x} cy={pos.y} rx="9" ry="6" transform={`rotate(-22 ${x} ${pos.y})`} className="engraved-notehead hollow"/> : <ellipse cx={x} cy={pos.y} rx="9" ry="6" transform={`rotate(-22 ${x} ${pos.y})`} className="engraved-notehead"/>}
+            {!['whole'].includes(note.duration) && <line x1={stemX} y1={stemTop} x2={stemX} y2={stemBottom} className="engraved-stem"/>}
+            {flagged && <path d={flagPath} className="engraved-flag"/>}
+            {note.duration==='sixteenth' && <path d={flagPath.replace(/27/g,'35').replace(/11/g,'19')} className="engraved-flag"/>}
+            {note.duration.startsWith('dotted-') && <circle cx={x+13} cy={pos.y-2} r="2.4" className="engraved-dot"/>}
+          </>}
+          <text x={x} y="190" textAnchor="middle" className="engraved-solfa">{rest?'Rest':note.solfa}</text>
+        </g>;
+      })}
+      <text x="64" y="216" className="engraved-hint">TREBLE CLEF · Select a note to edit</text>
+    </svg>
+  </div>;
+}
+\nfunction makeProject(title = 'My first composition'): MusicProject {
   return {
     id: crypto.randomUUID(), title, updatedAt: new Date().toISOString(), key: 'C major',
     convention: 'movable', minorConvention: 'la', tempo: 100,
@@ -250,7 +304,7 @@ export default function App() {
             <div className="editor-heading"><div><button className="back-link" onClick={() => setPage('home')}>← Workspace</button><h1>{activeProject.title}</h1><p className="page-lead">Your notes, your interpretation. Changes save automatically.</p></div><button className="secondary-button" onClick={exportBackup}><Save size={16}/> Backup</button></div>
             <div className="editor-toolbar"><div className="editor-project-icon"><FileMusic size={20}/></div><div className="editor-project-label"><strong>{activeProject.title}</strong><small>Autosaved locally</small></div><div className="toolbar-fields"><label>Key<select value={activeProject.key} onChange={e=>{const key=e.target.value;const nextProject={...activeProject,key};const notes=activeProject.notes.map(n=>({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({key,notes,solfaText});setSolfaDraft(solfaText);}}>{['C major','G major','D major','A major','E major','F major','B♭ major','A minor','E minor','D minor'].map(k=><option key={k}>{k}</option>)}</select></label><label>Tempo<input type="number" min="30" max="240" value={activeProject.tempo} onChange={e=>updateActive({tempo:Math.max(30,Math.min(240,Number(e.target.value)||100))})}/><span>BPM</span></label></div></div>
             <div className="editor-layout"><div className="editor-main"><div className="panel-heading"><div><h2>Melody staff</h2><p>Tap a note to change its solfa. Use the note buttons to add more.</p></div><span className="live-tag"><span className="status-dot"/> LIVE</span></div>
-              <div className="staff-wrap"><div className="staff-clef">𝄞</div><div className="staff-canvas"><div className="staff-lines">{[0,1,2,3,4].map(n=><span key={n}/>)}</div><div className="staff-note-row">{activeProject.notes.map((n,i)=><button key={n.id} className={`staff-note ${n.kind === 'rest' || n.pitch < 0 ? 'staff-rest' : ''}`} style={{top:`${Math.max(3,Math.min(91,staffY[i] - 34))}%`,left:activeProject.notes.length>1?`${(i/(activeProject.notes.length-1))*96}%`:'4%'}} title={n.kind === 'rest' || n.pitch < 0 ? 'Rest' : `${n.solfa}, MIDI pitch ${n.pitch}`} onClick={() => {const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind === 'rest' ? 'Rest' : n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}>{!(n.kind === 'rest' || n.pitch < 0) && <><span className={`note-head duration-${n.duration}`}/>{!['whole'].includes(n.duration)&&<span className={`note-stem duration-${n.duration}`}/>}{n.duration.startsWith('dotted-')&&<span className="note-dot"/>}{['eighth','sixteenth','dotted-eighth'].includes(n.duration)&&<span className={`note-flag ${n.duration==='sixteenth'?'double-flag':''}`}/>}</>}{(n.kind === 'rest' || n.pitch < 0) && <span className="rest-symbol">𝄽</span>}<small>{n.solfa}</small></button>)}</div></div></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
+              <div className="staff-wrap"><MusicStaff notes={activeProject.notes} onEdit={(n)=>{const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind==='rest'?'Rest':n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}/></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
               <div className="duration-editor">
                 <div className="duration-editor-heading"><strong>Note lengths</strong><span>Quarter = 1 beat in 4/4</span></div>
                 <div className="duration-note-list">{activeProject.notes.map((n,i)=><label className="duration-note" key={n.id}><span className="duration-note-name">{i+1}. {n.solfa}</span><select aria-label={`Duration for note ${i+1}`} value={n.duration} onChange={e=>updateNote(n.id,{duration:e.target.value})}><option value="whole">Whole (4 beats)</option><option value="half">Half (2 beats)</option><option value="quarter">Quarter (1 beat)</option><option value="eighth">Eighth (½ beat)</option><option value="sixteenth">Sixteenth (¼ beat)</option><option value="dotted-half">Dotted half (3 beats)</option><option value="dotted-quarter">Dotted quarter (1½ beats)</option><option value="dotted-eighth">Dotted eighth (¾ beat)</option></select></label>)}</div>
