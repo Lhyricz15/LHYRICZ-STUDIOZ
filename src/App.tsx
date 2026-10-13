@@ -55,7 +55,6 @@ function tokenToPitch(token: string, project: MusicProject): number | null {
       if (spelled === undefined) return null;
       offset = spelled;
     }
-    if (minor && project.minorConvention === 'la') tonic = (tonic + 3) % 12;
   }
   const baseOctave = octave ?? 4;
   const midi = (baseOctave + 1) * 12 + tonic + offset;
