@@ -124,7 +124,7 @@ function MusicStaff({notes,onEdit}:{notes:Note[];onEdit:(note:Note)=>void}) {
   const endX = width - 45;
   const gap = notes.length > 1 ? (endX - startX) / (notes.length - 1) : 0;
   return <div className="engraved-staff-wrap">
-    <svg className="engraved-staff" viewBox={`0 0 ${width} 230`} role="group" aria-label="Editable treble-clef melody staff">
+    <svg className="engraved-staff" style={{width:`${width}px`}} viewBox={`0 0 ${width} 230`} role="group" aria-label="Editable treble-clef melody staff">
       {[60,80,100,120,140].map(y=><line key={y} x1="62" y1={y} x2={width-24} y2={y} className="engraved-staff-line"/>)}
       <text x="12" y="130" className="engraved-clef">𝄞</text>
       {notes.map((note,index)=>{
