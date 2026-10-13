@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AudioLines, BookOpen, Check, ChevronDown, CircleHelp, Cloud, FileAudio2,
-  FileMusic, Headphones, House, Library, Menu, Moon, Music2, Plus, Save,
+  FileMusic, Headphones, House, Library, Menu, Moon, Music2, Play, Plus, Save, Square,
   Settings2, Sparkles, Sun, Trash2, Upload, WandSparkles, X
 } from 'lucide-react';
 
@@ -207,6 +207,8 @@ export default function App() {
   const [newTitle, setNewTitle] = useState('');
   const [solfaDraft, setSolfaDraft] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playbackRef = useRef<{ context: AudioContext; nodes: OscillatorNode[]; timer: number | null } | null>(null);
   const activeProject = projects.find(p => p.id === activeId) ?? projects[0];
 
   useEffect(() => {
@@ -252,6 +254,45 @@ export default function App() {
     updateActive({ notes, solfaText });
     setSolfaDraft(solfaText);
   };
+  const stopPlayback = () => {
+    const playback = playbackRef.current;
+    if (playback) {
+      if (playback.timer !== null) window.clearTimeout(playback.timer);
+      playback.nodes.forEach(node => { try { node.stop(); } catch { /* Already stopped. */ } });
+      void playback.context.close();
+      playbackRef.current = null;
+    }
+    setIsPlaying(false);
+  };
+  const playMelody = async () => {
+    if (!activeProject || !activeProject.notes.length) { setNotice('Add at least one note before playing the melody.'); return; }
+    stopPlayback();
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) { setNotice('This browser does not support audio playback. Try an up-to-date Chrome or Edge browser.'); return; }
+      const context = new AudioContextClass();
+      await context.resume();
+      const beatSeconds = 60 / activeProject.tempo;
+      const durationBeats: Record<string, number> = { whole:4, half:2, quarter:1, eighth:0.5, sixteenth:0.25, 'dotted-half':3, 'dotted-quarter':1.5, 'dotted-eighth':0.75 };
+      let cursor = context.currentTime + 0.08;
+      const nodes: OscillatorNode[] = [];
+      for (const note of activeProject.notes) {
+        const seconds = (durationBeats[note.duration] ?? 1) * beatSeconds;
+        if (note.kind !== 'rest' && note.pitch >= 0) {
+          const oscillator = context.createOscillator(); const gain = context.createGain();
+          oscillator.type = 'sine'; oscillator.frequency.value = 440 * Math.pow(2, (note.pitch - 69) / 12);
+          gain.gain.setValueAtTime(0.0001, cursor); gain.gain.exponentialRampToValueAtTime(0.18, cursor + 0.025);
+          gain.gain.setValueAtTime(0.18, Math.max(cursor + 0.026, cursor + seconds - 0.04));
+          gain.gain.exponentialRampToValueAtTime(0.0001, cursor + Math.max(0.05, seconds - 0.015));
+          oscillator.connect(gain); gain.connect(context.destination); oscillator.start(cursor); oscillator.stop(cursor + seconds); nodes.push(oscillator);
+        }
+        cursor += seconds;
+      }
+      const timer = window.setTimeout(() => { if (playbackRef.current?.context === context) { playbackRef.current = null; void context.close(); setIsPlaying(false); } }, Math.max(100, (cursor - context.currentTime) * 1000 + 150));
+      playbackRef.current = { context, nodes, timer }; setIsPlaying(true);
+    } catch { stopPlayback(); setNotice('Audio playback could not start. Check your browser audio permissions and try again.'); }
+  };
+  useEffect(() => () => { const playback = playbackRef.current; if (playback) { if (playback.timer !== null) window.clearTimeout(playback.timer); playback.nodes.forEach(node => { try { node.stop(); } catch { /* Already stopped. */ } }); void playback.context.close(); playbackRef.current = null; } }, []);
   const exportBackup = () => {
     const blob = new Blob([JSON.stringify({ app: 'LHYRICZ STUDIOZ', version: 1, projects }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
@@ -314,7 +355,7 @@ export default function App() {
           {page === 'editor' && activeProject && <section>
             <div className="editor-heading"><div><button className="back-link" onClick={() => setPage('home')}>← Workspace</button><h1>{activeProject.title}</h1><p className="page-lead">Your notes, your interpretation. Changes save automatically.</p></div><button className="secondary-button" onClick={exportBackup}><Save size={16}/> Backup</button></div>
             <div className="editor-toolbar"><div className="editor-project-icon"><FileMusic size={20}/></div><div className="editor-project-label"><strong>{activeProject.title}</strong><small>Autosaved locally</small></div><div className="toolbar-fields"><label>Key<select value={activeProject.key} onChange={e=>{const key=e.target.value;const nextProject={...activeProject,key};const notes=activeProject.notes.map(n=>n.kind === 'rest' || n.pitch < 0 ? n : ({...n,solfa:pitchToSolfa(n.pitch,nextProject)}));const solfaText=rebuildSolfa(notes,nextProject);updateActive({key,notes,solfaText});setSolfaDraft(solfaText);}}>{['C major','G major','D major','A major','E major','F major','B♭ major','A minor','E minor','D minor'].map(k=><option key={k}>{k}</option>)}</select></label><label>Tempo<input type="number" min="30" max="240" value={activeProject.tempo} onChange={e=>updateActive({tempo:Math.max(30,Math.min(240,Number(e.target.value)||100))})}/><span>BPM</span></label><label>Time<select aria-label="Time signature" value={activeProject.timeSignature || '4/4'} onChange={e=>updateActive({timeSignature:e.target.value})}>{['4/4','3/4','2/4','6/8'].map(t=><option key={t}>{t}</option>)}</select></label></div></div>
-            <div className="editor-layout"><div className="editor-main"><div className="panel-heading"><div><h2>Melody staff</h2><p>Tap a note to change its solfa. Use the note buttons to add more.</p></div><span className="live-tag"><span className="status-dot"/> LIVE</span></div>
+            <div className="editor-layout"><div className="editor-main"><div className="panel-heading"><div><h2>Melody staff</h2><p>Tap a note to change its solfa. Use the note buttons to add more.</p></div><div className="playback-actions"><button className="primary-button" onClick={playMelody} disabled={isPlaying || !activeProject.notes.some(n=>n.kind !== "rest" && n.pitch >= 0)}><Play size={15} fill="currentColor"/> Play melody</button><button className="secondary-button" onClick={stopPlayback} disabled={!isPlaying}><Square size={14} fill="currentColor"/> Stop</button></div></div>
               <div className="staff-wrap"><MusicStaff notes={activeProject.notes} timeSignature={activeProject.timeSignature || '4/4'} onEdit={(n)=>{const next=window.prompt('Enter a solfa syllable, pitch spelling, or Rest:',n.kind==='rest'?'Rest':n.solfa);if(next?.trim()){if(/^(rest|r|—|–|-)$/i.test(next.trim())){updateNote(n.id,{pitch:-1,solfa:'Rest',kind:'rest'});}else{const pitch=tokenToPitch(next,activeProject);if(pitch===null){setNotice('That note was not recognised. Try Do, Re, Mi, Fi, Bb, C# or Rest.');}else{updateNote(n.id,{pitch,solfa:pitchToSolfa(pitch,activeProject),kind:'note'});}}}}}/></div><div className="staff-legend"><span><i className="legend-dot blue"/> Melody notes</span><span>Choose a note to edit its pitch; set its length below.</span></div>
               <div className="duration-editor">
                 <div className="duration-editor-heading"><strong>Note lengths</strong><span>Quarter = 1 beat in 4/4</span></div>
